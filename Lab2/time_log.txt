@@ -1,0 +1,5 @@
+Threads: 1, Time: 26565.1 microseconds
+Threads: 2, Time: 13254.1 microseconds
+Threads: 4, Time: 6808.17 microseconds
+Threads: 8, Time: 4565.33 microseconds
+Threads: 16, Time: 4181.98 microseconds
