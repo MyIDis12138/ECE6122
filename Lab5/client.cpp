@@ -26,23 +26,42 @@ struct tcpMessage {
     char chMsg[1000];
 };
 
-std::mutex coutMutex;
+std::mutex msgMutex;
+tcpMessage lastReceivedMsg;
 
-void receiveMessages(sf::TcpSocket& socket, std::atomic<bool>& running) {
-    //socket.setBlocking(false);
-
+/**
+ * Receives messages from the server and updates the last received message.
+ * 
+ * @param socket Reference to the TCP socket connected to the server.
+ * @param running Atomic flag indicating if the client is still running.
+ * @param receivedFlag Atomic flag that signals if a new message has been received.
+ */
+void receiveMessages(sf::TcpSocket& socket, std::atomic<bool>& running, std::atomic<bool>& receivedFlag) {
+    socket.setBlocking(false);
     while (running) {
         tcpMessage msg;
-        std::size_t received;
-        if (socket.receive(&msg, sizeof(msg), received) != sf::Socket::Done) {
-            break;
+        std::size_t receivedSize;
+
+        if (socket.receive(&msg, sizeof(msg), receivedSize) != sf::Socket::Done) {
+            continue;
         }
 
-        std::cout << "Received Msg Type: " << static_cast<int>(msg.nType) 
-                << "; Msg: " << msg.chMsg << std::endl;
+        {
+            std::lock_guard<std::mutex> guard(msgMutex);
+            lastReceivedMsg = msg;
+            receivedFlag.store(true);
+        }
     }
 }
 
+/**
+ * Main function to start the client. Connects to the server, starts the message receiver
+ * thread, and processes user commands to send messages or quit.
+ * 
+ * @param argc Number of command line arguments.
+ * @param argv Array of command line arguments.
+ * @return Returns 0 on successful execution, 1 on failure.
+ */
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         std::cerr << "Usage: " << argv[0] << " <server_ip> <port_number>\n";
@@ -59,7 +78,8 @@ int main(int argc, char* argv[]) {
     }
 
     std::atomic<bool> running(true);
-    std::thread receiverThread(receiveMessages, std::ref(socket), std::ref(running));
+    std::atomic<bool> received(false);
+    std::thread receiverThread(receiveMessages, std::ref(socket), std::ref(running), std::ref(received));
 
     tcpMessage msg;
     msg.nVersion = 1; // Default version
@@ -67,8 +87,20 @@ int main(int argc, char* argv[]) {
     while (running) {
         std::string input;
 
+        {        
+            std::lock_guard<std::mutex> guard(msgMutex);
+            received.load();
+            if (received) {
+                std::cout << "Received Msg Type: " << static_cast<int>(lastReceivedMsg.nType) 
+                    << "; Msg: " << lastReceivedMsg.chMsg << std::endl;
+                received.store(false);
+            }
+        }
+
         std::cout << "Please enter command: ";
         std::getline(std::cin, input);
+
+
         if (input.empty()) continue;
 
         if (input[0] == 'v') {
@@ -80,7 +112,9 @@ int main(int argc, char* argv[]) {
             strncpy(msg.chMsg, message.c_str(), sizeof(msg.chMsg));
             msg.nMsgLen = static_cast<unsigned short>(message.size());
 
-            if (socket.send(&msg, sizeof(msg)) != sf::Socket::Done) {
+            std::size_t sent = 0;
+
+            if (socket.send(&msg, sizeof(msg), sent) != sf::Socket::Done) {
                 std::cerr << "Failed to send message" << std::endl;
                 running = false;
             }
@@ -88,7 +122,8 @@ int main(int argc, char* argv[]) {
             running = false;
             socket.disconnect();
         }
-    
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));    
     }
 
     if (receiverThread.joinable()) {

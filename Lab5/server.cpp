@@ -35,10 +35,17 @@ tcpMessage lastReceivedMsg;
 std::mutex lastMsgMutex;
 std::atomic<bool> serverRunning(true);
 
+/**
+ * Handles communication with a connected client.
+ * 
+ * @param clientSocket Pointer to the socket connected to the client.
+ * @param serverRunning Atomic flag indicating if the server is running.
+ */
 void handleClient(sf::TcpSocket* clientSocket, std::atomic<bool>& serverRunning) {
     while (serverRunning) {
         tcpMessage msg;
         std::size_t received;
+        std::size_t sent;
 
         // Receive a message from the client
         if (clientSocket->receive(&msg, sizeof(msg), received) != sf::Socket::Done) {
@@ -58,20 +65,32 @@ void handleClient(sf::TcpSocket* clientSocket, std::atomic<bool>& serverRunning)
             std::lock_guard<std::mutex> guard(clientsMutex);
             for (auto& client : clients) {
                 if (client != clientSocket) {
-                    client->send(&msg, sizeof(msg));
+                    client->send(&msg, sizeof(msg), sent);
                 }
             }
         } else if (msg.nType == 201) { // Reverse message and send back
             std::reverse(msg.chMsg, msg.chMsg + strlen(msg.chMsg));
-            clientSocket->send(&msg, sizeof(msg));
+            clientSocket->send(&msg, sizeof(msg), sent);
         }
     }
 
     // Clean up the client socket
-    clientSocket->disconnect();
+    {
+        std::lock_guard<std::mutex> guard(clientsMutex);
+        auto it = std::find(clients.begin(), clients.end(), clientSocket);
+        if (it != clients.end()) {
+            clients.erase(it); 
+        }
+    }
     delete clientSocket;
 }
 
+/**
+ * Accepts incoming client connections and spawns a new thread to handle each client.
+ * 
+ * @param listener Reference to the TCP listener for accepting new connections.
+ * @param serverRunning Atomic flag indicating if the server is running.
+ */
 void acceptClients(sf::TcpListener& listener, std::atomic<bool>& serverRunning) {
     listener.setBlocking(false);
 
@@ -89,6 +108,11 @@ void acceptClients(sf::TcpListener& listener, std::atomic<bool>& serverRunning) 
     }
 }
 
+/**
+ * Constructs and returns a string listing all connected clients.
+ * 
+ * @return A string containing the IP and port information of all connected clients.
+ */
 std::string getClientList() {
     std::lock_guard<std::mutex> guard(clientsMutex);
     std::stringstream ss;
@@ -101,6 +125,9 @@ std::string getClientList() {
     return ss.str();
 }
 
+/**
+ * Closes all client connections and clears the clients list.
+ */
 void closeAllClients() {
     std::lock_guard<std::mutex> guard(clientsMutex);
     for (auto& client : clients) {
@@ -110,12 +137,24 @@ void closeAllClients() {
     clients.clear();
 }
 
-int main() {
+/**
+ * Main function to start the server. It sets up the listener on a specified port,
+ * starts the thread to accept clients, and processes server commands.
+ * 
+ * @param argc Number of command line arguments.
+ * @param argv Array of command line arguments.
+ * @return Returns 0 on successful execution, 1 on failure.
+ */
+int main(int argc, char* argv[]) {
+    if (argc != 2){
+        std::cerr << "Usage: " << argv[0] << " <port_number>\n";
+        return 1;
+    }
+
     sf::TcpListener listener;
     std::vector<std::thread> clientThreads;
+    unsigned short port = std::stoi(argv[1]);
 
-    // Bind the listener to a port
-    unsigned short port = 5300;
     if (listener.listen(port) != sf::Socket::Done) {
         std::cerr << "Error binding to port" << std::endl;
         return 1;
@@ -143,12 +182,6 @@ int main() {
 
     acceptThread.join();
     closeAllClients();
-
-    for (auto& thread : clientThreads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
 
     return 0;
 }
