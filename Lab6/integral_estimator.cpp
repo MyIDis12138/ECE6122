@@ -41,19 +41,23 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    // Parse command line arguments
-    if (argc != 5) {
-        if (rank == 0) {
+    // Root process checks command line arguments and broadcasts to all processes
+    if (rank == 0) {
+        if (argc != 5) {
             std::cerr << "Usage: " << argv[0] << " -P <1 or 2> -N <number of samples>" << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 1);
+            return 1;
         }
-        MPI_Abort(MPI_COMM_WORLD, 1);
-        return 1;
+        P = std::atoi(argv[2]);
+        N = std::atoi(argv[4]);
     }
+    // Broadcast P and N to all processes
+    MPI_Bcast(&P, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    P = std::atoi(argv[2]);
-    N = std::atoi(argv[4]);
     int local_samples = N / size;
-    double local_estimate, global_estimate;
+    double local_estimate;
+    std::vector<double> global_estimates(size);
 
     // Calculate local estimate based on which integral to compute
     if (P == 1) {
@@ -62,13 +66,17 @@ int main(int argc, char* argv[]) {
         local_estimate = monte_carlo_integral_exp(local_samples);
     }
 
-    // Combine the results from all processes
-    MPI_Reduce(&local_estimate, &global_estimate, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+    // Gather the results from all processes to the root process
+    MPI_Gather(&local_estimate, 1, MPI_DOUBLE, global_estimates.data(), 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     // Root process computes the average of results and prints the final estimate
     if (rank == 0) {
-        global_estimate /= (N * 1.0); // Divide by total number of samples for average
-        std::cout << "The estimate for integral " << P << " is " << global_estimate << std::endl;
+        double final_estimate = 0.0;
+        for (double estimate : global_estimates) {
+            final_estimate += estimate;
+        }
+        final_estimate /= (N * 1.0); // Divide by total number of samples for average
+        std::cout << "The estimate for integral " << P << " is " << final_estimate << std::endl;
     }
 
     MPI_Finalize();
