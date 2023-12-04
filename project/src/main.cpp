@@ -8,20 +8,22 @@
 #include <src/shader.h>
 #include <src/camera.h>
 #include <src/model.h>
+#include <src/lights.h>
+#include <src/room.h>
 
 #include <iostream>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void processInput(GLFWwindow *window);
+void processInput(GLFWwindow *window, Model& ourModel);
 
 // settings
 const unsigned int SCR_WIDTH = 600;
 const unsigned int SCR_HEIGHT = 800;
 
 // camera
-Camera camera(glm::vec3(33.0f, 19.0f, 3.4f));
+Camera camera(glm::vec3(50.0f, 19.0f, 3.4f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -29,6 +31,10 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+float updateLight = 0.0f;
+
+bool isMoving = false;
+bool pressed = false;
 
 int main()
 {
@@ -73,14 +79,32 @@ int main()
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
 
+    // Enable back-face culling
+    // -------------------------
+    glEnable(GL_CULL_FACE);
+
     // build and compile shaders
     // -------------------------
     Shader ourShader("../shaders/materials.vs", "../shaders/materials.fs");
+    Shader roomShader("../shaders/room.vs", "../shaders/room.fs");
+
+    // // build and compile light position shader
+    // // ---------------------------------------
+    // Shader lightShader("../shaders/lightpos.vs", "../shaders/lightpos.fs");
 
     // load models
     // -----------
     Model ourModel("../materials/OBJ.obj");
 
+    // load floor
+    // ----------
+    Room ourRoom("../materials/WoodPlanksOld.jpg", "../materials/uvmap.DDS", "../materials/spookyScene.jpg");
+
+    // Create dir light
+    DirLight myDirLight = defaultDirLight(glm::vec3(0.0f, -1.0f, 0.0f));
+
+    // Create spot light
+    SpotLight mySpotLight = defaultSpotLight(glm::vec3(0.0f, 20.0f, 0.0f));
     
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -94,10 +118,11 @@ int main()
         float currentFrame = static_cast<float>(glfwGetTime());
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+        updateLight += deltaTime;
 
         // input
         // -----
-        processInput(window);
+        processInput(window, ourModel);
 
         // render
         // ------
@@ -106,19 +131,34 @@ int main()
 
         // don't forget to enable shader before setting uniforms
         ourShader.use();
+        
+        // Update camera/view position in shader
+        ourShader.setVec3("viewPos", camera.Position);
+        
+        // Update dir light in shader
+        set_Dirlight_in_shader(myDirLight, ourShader);
+        set_Spotlight_in_shader(mySpotLight, ourShader);
 
         // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 200.0f);
         glm::mat4 view = camera.GetViewMatrix();
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
+        
+        //randomly change light density every 0.1 second
+        if (updateLight > 0.1f) {
+            ourModel.randomLightDensity();
+            updateLight = 0.0f;
+        }
 
-        // render the loaded model
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f)); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(1.0f, 1.0f, 1.0f));	// it's a bit too big for our scene, so scale it down
-        ourShader.setMat4("model", model);
+        if (isMoving)
+            ourModel.updateModels(deltaTime);
         ourModel.Draw(ourShader);
+        
+        roomShader.use();
+        roomShader.setMat4("projection", projection);
+        roomShader.setMat4("view", view);
+        ourRoom.Draw(roomShader);
 
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
@@ -135,11 +175,10 @@ int main()
 
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void processInput(GLFWwindow *window, Model& ourModel)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-
     if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
@@ -152,6 +191,15 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(UP, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(DOWN, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS)
+        pressed = true;
+    if (glfwGetKey(window, GLFW_KEY_G) == GLFW_RELEASE && pressed){
+        isMoving = !isMoving;
+        pressed = false;
+        if (isMoving){
+            ourModel.updateRandomMovement();
+        }
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

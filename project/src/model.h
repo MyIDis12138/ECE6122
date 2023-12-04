@@ -12,6 +12,7 @@
 
 #include <src/mesh.h>
 #include <src/shader.h>
+#include <src/lights.h>
 
 #include <string>
 #include <fstream>
@@ -23,14 +24,104 @@ using namespace std;
 
 unsigned int TextureFromFile(const char *path, const string &directory, bool gamma = false);
 
+class SubModel {
+public:
+    std::vector<Mesh> meshes;
+    std::string meshName;
+    
+    glm::vec3 velocity;
+    glm::vec3 angularVelocity;
+    glm::mat4 modelMatrix;
+    
+    PointLight pointLight;
+    AABB boundingBox;
+
+    // Default constructor
+    SubModel() 
+        : modelMatrix(glm::mat4(1.0f)),
+          meshName(""), 
+          velocity(glm::vec3(0.0f)),
+          angularVelocity(glm::vec3(0.0f)),
+          pointLight(defaultPointLight(glm::vec3(0.0f))) {}
+
+    // Constructor with parameters
+    SubModel(std::vector<Mesh> meshes, std::string meshName)
+    :   meshes(meshes), meshName(meshName),           
+        velocity(glm::vec3(0.0f)),
+        angularVelocity(glm::vec3(0.0f)),
+        modelMatrix(glm::mat4(1.0f))
+    {
+        pointLight = defaultPointLight(glm::vec3(0.0f));
+        computeCentroid();
+        computeBoundingBox();
+    }
+
+    void update(float deltaTime) {
+        // Calculate translation to origin and back
+        glm::vec3 centroid = pointLight.position; // Assuming pointLight.position is at the centroid
+        glm::mat4 toOrigin = glm::translate(glm::mat4(1.0f), -centroid);
+        glm::mat4 backFromOrigin = glm::translate(glm::mat4(1.0f), centroid);
+
+        // Apply translation
+        glm::mat4 translation = glm::translate(glm::mat4(1.0f), velocity * deltaTime);
+        modelMatrix = translation * modelMatrix;
+
+        // Apply rotation around the submodel's own Y-axis
+        glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angularVelocity.y * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f));
+        modelMatrix = backFromOrigin * rotation * toOrigin * modelMatrix;
+
+        // Update bounding box and point light position
+        pointLight.position = glm::vec3(modelMatrix * glm::vec4(centroid, 1.0f));
+        boundingBox.min = glm::vec3(modelMatrix * glm::vec4(boundingBox.min, 1.0f));
+        boundingBox.max = glm::vec3(modelMatrix * glm::vec4(boundingBox.max, 1.0f));
+    }
+
+
+
+    // Function to draw the submodel
+    void Draw(Shader& shader) {
+        shader.use();
+        shader.setMat4("model", modelMatrix);
+        set_Pointlight_in_shader(pointLight, shader, 0);
+        for (unsigned int j = 0; j < meshes.size(); j++) {
+            meshes[j].Draw(shader);
+        }
+    }
+
+private:
+    void computeCentroid() {
+        if (!meshes.empty()){
+            glm::vec3 centroid(0.0f);
+            for (const Mesh& mesh : meshes) {
+                centroid += mesh.calculateCentroid();
+            }
+            centroid /= static_cast<float>(meshes.size());
+            pointLight.position = centroid;
+        }
+    }
+
+    void computeBoundingBox() {
+        if (!meshes.empty()) {
+            boundingBox = meshes[0].getBoundingBox();
+            for (const Mesh& mesh : meshes) {
+                AABB meshBox = mesh.getBoundingBox();
+                boundingBox.min = glm::min(boundingBox.min, meshBox.min);
+                boundingBox.max = glm::max(boundingBox.max, meshBox.max);
+            }
+        }
+    }
+};
+
 class Model 
 {
 public:
     // model data 
     vector<Texture> textures_loaded;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
-    vector<Mesh>    meshes;
+    vector<Mesh> m;
     string directory;
     bool gammaCorrection;
+    
+    vector<SubModel> subModels;
 
     // constructor, expects a filepath to a 3D model.
     Model(string const &path, bool gamma = false) : gammaCorrection(gamma)
@@ -41,9 +132,29 @@ public:
     // draws the model, and thus all its meshes
     void Draw(Shader &shader)
     {
-        for(unsigned int i = 0; i < meshes.size(); i++)
-            meshes[i].Draw(shader);
+        for(unsigned int i = 0; i < subModels.size(); i++)
+            subModels[i].Draw(shader);     
     }
+
+    void updateModels(float deltaTime) {
+        for (SubModel& subModel : subModels) {
+            subModel.update(deltaTime);
+        }
+    }
+
+    void randomLightDensity() {
+        for (unsigned int i = 0; i < subModels.size(); i++) {
+            update_indensity_random(subModels[i].pointLight);
+        }
+    }
+
+    void updateRandomMovement(){
+        for (SubModel& subModel : subModels) {
+            subModel.velocity = glm::vec3((rand() % 100 - 50) / 50.0f, (rand() % 100 - 50) / 50.0f, (rand() % 100 - 50) / 50.0f);
+            subModel.angularVelocity = glm::vec3(0.0f, (rand() % 100 - 50) / 50.0f, 0.0f);
+        }
+    }
+
     
 private:
     // loads a model with supported ASSIMP extensions from file and stores the resulting meshes in the meshes vector.
@@ -74,14 +185,23 @@ private:
             // the node object only contains indices to index the actual objects in the scene. 
             // the scene contains all the data, node is just to keep stuff organized (like relations between nodes).
             aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-            meshes.push_back(processMesh(mesh, scene));
+            m.push_back(processMesh(mesh, scene));
         }
+
         // after we've processed all of the meshes (if any) we then recursively process each of the children nodes
         for(unsigned int i = 0; i < node->mNumChildren; i++)
         {
             processNode(node->mChildren[i], scene);
+            if (node->mNumChildren== 4){
+                SubModel subModel(m, node->mName.C_Str());
+                if (subModel.meshName=="Gost"){
+                    subModel.pointLight.ambient = glm::vec3(1.0f, 1.0f, 1.0f);
+                    subModel.pointLight.init_ambient = glm::vec3(1.0f, 1.0f, 1.0f);
+                }
+                subModels.push_back(subModel);
+            }
+            m.clear();
         }
-
     }
 
     Mesh processMesh(aiMesh *mesh, const aiScene *scene)
@@ -242,4 +362,5 @@ unsigned int TextureFromFile(const char *path, const string &directory, bool gam
 
     return textureID;
 }
+
 #endif

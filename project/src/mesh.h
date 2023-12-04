@@ -37,6 +37,11 @@ struct Texture {
     string path;
 };
 
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
+
 class Mesh {
 public:
     // mesh Data
@@ -93,6 +98,27 @@ public:
 
         // always good practice to set everything back to defaults once configured.
         glActiveTexture(GL_TEXTURE0);
+    }
+
+    glm::vec3 calculateCentroid() const {
+        glm::vec3 centroid(0.0f);
+        for (const Vertex& vertex : vertices) {
+            centroid += vertex.Position;
+        }
+        centroid /= static_cast<float>(vertices.size());
+        return centroid;
+    }
+
+    AABB getBoundingBox() const {
+        AABB box;
+        if (!vertices.empty()) {
+            box.min = box.max = vertices[0].Position;
+            for (const Vertex& vertex : vertices) {
+                box.min = glm::min(box.min, vertex.Position);
+                box.max = glm::max(box.max, vertex.Position);
+            }
+        }
+        return box;
     }
 
 private:
