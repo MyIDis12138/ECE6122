@@ -16,8 +16,7 @@
                 "-lGLEW",
                 "-lglfw",
                 "-I${workspaceFolder}",
-                "-I${workspaceFolder}/external/glad/include",
-                "-I${workspaceFolder}/external/assimp-3.0.1270/include",
+                "-I${workspaceFolder}/external/glad/include"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

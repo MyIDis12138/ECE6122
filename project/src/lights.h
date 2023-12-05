@@ -1,8 +1,21 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The lights header contains three lights: a directional light, a point light and a spot light.
+It provides functions to set up the lights and to update the lights' intensity.
+This file is part of the project in the ECE6122 class.
+*/
 #ifndef LIGHTS_H
 #define LIGHTS_H
 
 #include <glm/glm.hpp>
+
 #include <src/shader.h>
+#include <src/light_cube.h>
+
 #include <random>
 
 struct DirLight {
@@ -14,7 +27,8 @@ struct DirLight {
 };
 
 struct PointLight {
-    glm::vec3 position;
+    glm::vec3 localPos;
+    glm::vec3 globalPos;
 
     float constant;
     float linear;
@@ -25,6 +39,7 @@ struct PointLight {
     glm::vec3 specular;
 
     glm::vec3 init_ambient;
+    LightCube light_cube;     
 };
 
 struct SpotLight {
@@ -39,7 +54,7 @@ struct SpotLight {
   
     glm::vec3 ambient;
     glm::vec3 diffuse;
-    glm::vec3 specular;       
+    glm::vec3 specular; 
 };
 
 void set_Dirlight_in_shader(const DirLight& dir_light, const Shader& shader) {
@@ -49,8 +64,8 @@ void set_Dirlight_in_shader(const DirLight& dir_light, const Shader& shader) {
     shader.setVec3("dirLight.specular", dir_light.specular);
 }
 
-void set_Pointlight_in_shader(const PointLight& point_light, const Shader& shader, int index) {
-    shader.setVec3("pointLight.position", point_light.position);
+void set_Pointlight_in_shader(const PointLight& point_light, const Shader& shader) {
+    shader.setVec3("pointLight.position", point_light.globalPos);
     shader.setFloat("pointLight.constant", point_light.constant);
     shader.setFloat("pointLight.linear", point_light.linear);
     shader.setFloat("pointLight.quadratic", point_light.quadratic);
@@ -84,7 +99,8 @@ DirLight defaultDirLight(glm::vec3 direction) {
 
 PointLight defaultPointLight(glm::vec3 position) {
     PointLight point_light;
-    point_light.position = position;
+    point_light.localPos = position;
+    point_light.globalPos = position;
     point_light.constant = 1.0f;
     point_light.linear = 0.022f;
     point_light.quadratic = 0.0019f;
@@ -93,6 +109,7 @@ PointLight defaultPointLight(glm::vec3 position) {
     point_light.specular = glm::vec3(0.5f, 0.5f, 0.5f);
 
     point_light.init_ambient = point_light.ambient;
+    point_light.light_cube = LightCube(position, glm::vec3(1.0f), 1.0f);
     return point_light;
 }
 

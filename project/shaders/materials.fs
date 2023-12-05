@@ -52,8 +52,8 @@ uniform SpotLight spotLight;
 uniform sampler2D texture_diffuse1;
 
 // Specular and shininess - hardcoded for demonstration
-vec3 specularColor = vec3(1.0, 1.0, 1.0); // Example: white specular color
-float shininess = 16.0; // Example: hardcoded shininess value
+vec3 specularColor = vec3(1.0, 1.0, 1.0); 
+float shininess = 16.0; 
 
 // Function prototypes
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);

@@ -1,3 +1,15 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The 'Mesh' header file defines structures and a class for handling 3D meshes in OpenGL. 
+It includes 'Vertex' and 'Texture' structures to manage mesh properties and textures. 
+Source from: https://github.com/JoeyDeVries/LearnOpenGL/blob/master/includes/learnopengl/mesh.h
+This file is part of the project in the ECE6122 class.
+*/
+
 #ifndef MESH_H
 #define MESH_H
 
@@ -7,6 +19,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <src/shader.h>
+#include <src/collision.h>
 
 #include <string>
 #include <vector>
@@ -35,11 +48,6 @@ struct Texture {
     unsigned int id;
     string type;
     string path;
-};
-
-struct AABB {
-    glm::vec3 min;
-    glm::vec3 max;
 };
 
 class Mesh {
@@ -112,10 +120,10 @@ public:
     AABB getBoundingBox() const {
         AABB box;
         if (!vertices.empty()) {
-            box.min = box.max = vertices[0].Position;
+            box.localMin = box.localMax = vertices[0].Position;
             for (const Vertex& vertex : vertices) {
-                box.min = glm::min(box.min, vertex.Position);
-                box.max = glm::max(box.max, vertex.Position);
+                box.localMin = glm::min(box.localMin, vertex.Position);
+                box.localMax = glm::max(box.localMax, vertex.Position);
             }
         }
         return box;

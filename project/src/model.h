@@ -1,3 +1,15 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The 'Model' header file defines the 'Model' and 'SubModel' classes for managing complex 3D models in OpenGL. 
+It handles the loading and processing of models using the ASSIMP library, and manages textures, meshes, and sub-models. 
+The 'Model' class is responsible for drawing the model, updating model states, handling collisions, and managing lighting. 
+The 'SubModel' class represents a part of the model, containing its own meshes, transformation data, and lighting information. 
+This file is integral to the project in the ECE6122 class.
+*/
 #ifndef MODEL_H
 #define MODEL_H
 
@@ -13,6 +25,8 @@
 #include <src/mesh.h>
 #include <src/shader.h>
 #include <src/lights.h>
+#include <src/collision.h>
+#include <src/room.h>
 
 #include <string>
 #include <fstream>
@@ -51,14 +65,13 @@ public:
         angularVelocity(glm::vec3(0.0f)),
         modelMatrix(glm::mat4(1.0f))
     {
-        pointLight = defaultPointLight(glm::vec3(0.0f));
-        computeCentroid();
+        pointLight = defaultPointLight(computeCentroid());
         computeBoundingBox();
     }
 
-    void update(float deltaTime) {
+   void update(float deltaTime) {
         // Calculate translation to origin and back
-        glm::vec3 centroid = pointLight.position; // Assuming pointLight.position is at the centroid
+        glm::vec3 centroid = pointLight.globalPos; // Assuming pointLight.position is at the centroid
         glm::mat4 toOrigin = glm::translate(glm::mat4(1.0f), -centroid);
         glm::mat4 backFromOrigin = glm::translate(glm::mat4(1.0f), centroid);
 
@@ -71,32 +84,38 @@ public:
         modelMatrix = backFromOrigin * rotation * toOrigin * modelMatrix;
 
         // Update bounding box and point light position
-        pointLight.position = glm::vec3(modelMatrix * glm::vec4(centroid, 1.0f));
-        boundingBox.min = glm::vec3(modelMatrix * glm::vec4(boundingBox.min, 1.0f));
-        boundingBox.max = glm::vec3(modelMatrix * glm::vec4(boundingBox.max, 1.0f));
+        pointLight.globalPos = glm::vec3(modelMatrix * glm::vec4(pointLight.localPos, 1.0f));
+        pointLight.light_cube.position = pointLight.globalPos;
+        boundingBox.globalMin = glm::vec3(modelMatrix * glm::vec4(boundingBox.localMin, 1.0f));
+        boundingBox.globalMax = glm::vec3(modelMatrix * glm::vec4(boundingBox.localMax, 1.0f));
     }
-
-
 
     // Function to draw the submodel
     void Draw(Shader& shader) {
         shader.use();
         shader.setMat4("model", modelMatrix);
-        set_Pointlight_in_shader(pointLight, shader, 0);
+        set_Pointlight_in_shader(pointLight, shader);
         for (unsigned int j = 0; j < meshes.size(); j++) {
             meshes[j].Draw(shader);
         }
     }
 
+    void DrawLightCube(Shader& shader) {
+        pointLight.light_cube.Draw(shader);
+    }
+
 private:
-    void computeCentroid() {
+    glm::vec3 computeCentroid() {
         if (!meshes.empty()){
             glm::vec3 centroid(0.0f);
             for (const Mesh& mesh : meshes) {
                 centroid += mesh.calculateCentroid();
             }
             centroid /= static_cast<float>(meshes.size());
-            pointLight.position = centroid;
+            return centroid;
+        }
+        else{
+            return glm::vec3(0.0f);
         }
     }
 
@@ -105,9 +124,11 @@ private:
             boundingBox = meshes[0].getBoundingBox();
             for (const Mesh& mesh : meshes) {
                 AABB meshBox = mesh.getBoundingBox();
-                boundingBox.min = glm::min(boundingBox.min, meshBox.min);
-                boundingBox.max = glm::max(boundingBox.max, meshBox.max);
+                boundingBox.localMin = glm::min(boundingBox.localMin, meshBox.localMin);
+                boundingBox.localMax = glm::max(boundingBox.localMax, meshBox.localMax);
             }
+            boundingBox.globalMin = boundingBox.localMax;
+            boundingBox.globalMax = boundingBox.localMax;
         }
     }
 };
@@ -132,29 +153,55 @@ public:
     // draws the model, and thus all its meshes
     void Draw(Shader &shader)
     {
-        for(unsigned int i = 0; i < subModels.size(); i++)
-            subModels[i].Draw(shader);     
+        for (SubModel& subModel: subModels)
+            subModel.Draw(shader);
+        
+    }
+
+    void DrawLightCubes(Shader &shader){
+        for (SubModel& subModel : subModels) 
+            subModel.DrawLightCube(shader);
+        
     }
 
     void updateModels(float deltaTime) {
-        for (SubModel& subModel : subModels) {
+        for (SubModel& subModel: subModels) 
             subModel.update(deltaTime);
-        }
     }
 
     void randomLightDensity() {
-        for (unsigned int i = 0; i < subModels.size(); i++) {
-            update_indensity_random(subModels[i].pointLight);
-        }
+        for (SubModel& subModel: subModels)
+            update_indensity_random(subModel.pointLight);
+        
     }
 
     void updateRandomMovement(){
-        for (SubModel& subModel : subModels) {
+        for (SubModel& subModel: subModels) {
             subModel.velocity = glm::vec3((rand() % 100 - 50) / 50.0f, (rand() % 100 - 50) / 50.0f, (rand() % 100 - 50) / 50.0f);
             subModel.angularVelocity = glm::vec3(0.0f, (rand() % 100 - 50) / 50.0f, 0.0f);
         }
     }
 
+    void checkModelCollisions() {
+        for (int i = 0; i < subModels.size(); ++i){
+            AABB aabb1 = subModels[i].boundingBox;
+            for (int j = i + 1; j < subModels.size(); ++j) {
+                AABB aabb2 = subModels[j].boundingBox;
+                if (intersect(aabb1, aabb2)) {
+                    // std::cout<< "collide! \n";
+                    subModels[i].velocity *= -1.0f;
+                    subModels[j].velocity *= -1.0f;
+                }
+            }
+        }
+    }
+
+    void checkRoomCollisions(const Room& room){
+        for (int i = 0; i < subModels.size(); ++i){
+            glm::vec3 a = checkBoxRoomCollisions(subModels[i].boundingBox, room);
+            subModels[i].velocity *= a;
+        }
+    }
     
 private:
     // loads a model with supported ASSIMP extensions from file and stores the resulting meshes in the meshes vector.
@@ -195,8 +242,8 @@ private:
             if (node->mNumChildren== 4){
                 SubModel subModel(m, node->mName.C_Str());
                 if (subModel.meshName=="Gost"){
-                    subModel.pointLight.ambient = glm::vec3(1.0f, 1.0f, 1.0f);
-                    subModel.pointLight.init_ambient = glm::vec3(1.0f, 1.0f, 1.0f);
+                    subModel.pointLight.ambient = glm::vec3(1.0f);
+                    subModel.pointLight.init_ambient = glm::vec3(1.0f);
                 }
                 subModels.push_back(subModel);
             }

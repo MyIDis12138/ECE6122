@@ -1,3 +1,12 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The camera class is used to store the camera's position and orientation. It also provides
+functions to move the camera and to calculate the view matrix.
+*/
 #ifndef CAMERA_H
 #define CAMERA_H
 
@@ -79,7 +88,7 @@ public:
         if (direction == DOWN)
             Yaw -= deltaTime * RotationSpeed;
         if (constrainYaw)
-            Yaw = glm::clamp(Yaw, -1.57f, 1.57f);
+            Yaw = glm::clamp(Yaw, -0.57f, 1.0f);
         updateCameraVectors();
     }
 
@@ -94,9 +103,6 @@ private:
             cos(Yaw) * cos(Pitch)
         );
         Direction = direction;
-        // also re-calculate the Right and Up vector
-        // Right = glm::normalize(glm::cross(Front, WorldUp));  // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
-        // Up    = glm::normalize(glm::cross(Right, Front));
 
         Position = Radius * direction;
     }

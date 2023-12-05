@@ -1,3 +1,16 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+This C++ program uses OpenGL to create a 3D scene with a model and a room. The model can be moved
+by the user and will bounce off the walls of the room. The model will also randomly change its
+light density every 0.1 second. The user can also toggle the movement of the model by pressing
+the 'G' key.
+This file is the main function of the project in the ECE6122 class.
+*/
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -87,6 +100,7 @@ int main()
     // -------------------------
     Shader ourShader("../shaders/materials.vs", "../shaders/materials.fs");
     Shader roomShader("../shaders/room.vs", "../shaders/room.fs");
+    Shader lightCubeShader("../shaders/light_cube.vs", "../shaders/light_cube.fs");
 
     // // build and compile light position shader
     // // ---------------------------------------
@@ -98,13 +112,13 @@ int main()
 
     // load floor
     // ----------
-    Room ourRoom("../materials/WoodPlanksOld.jpg", "../materials/uvmap.DDS", "../materials/spookyScene.jpg");
+    Room ourRoom("../materials/halloween.jpg", "../materials/uvmap.DDS", "../materials/spookyScene.jpg");
 
     // Create dir light
     DirLight myDirLight = defaultDirLight(glm::vec3(0.0f, -1.0f, 0.0f));
 
     // Create spot light
-    SpotLight mySpotLight = defaultSpotLight(glm::vec3(0.0f, 20.0f, 0.0f));
+    SpotLight mySpotLight = defaultSpotLight(glm::vec3(0.0f, 30.0f, 0.0f));
     
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -124,26 +138,24 @@ int main()
         // -----
         processInput(window, ourModel);
 
-        // render
+        // render the objects
         // ------
         glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // don't forget to enable shader before setting uniforms
+        // view/projection transformations
         ourShader.use();
-        
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 200.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+        ourShader.setMat4("projection", projection);
+        ourShader.setMat4("view", view);
+
         // Update camera/view position in shader
         ourShader.setVec3("viewPos", camera.Position);
         
         // Update dir light in shader
         set_Dirlight_in_shader(myDirLight, ourShader);
         set_Spotlight_in_shader(mySpotLight, ourShader);
-
-        // view/projection transformations
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 200.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("projection", projection);
-        ourShader.setMat4("view", view);
         
         //randomly change light density every 0.1 second
         if (updateLight > 0.1f) {
@@ -151,14 +163,27 @@ int main()
             updateLight = 0.0f;
         }
 
+        // check collisions
+        ourModel.checkModelCollisions();
+        ourModel.checkRoomCollisions(ourRoom);
+
         if (isMoving)
             ourModel.updateModels(deltaTime);
         ourModel.Draw(ourShader);
         
+        // render the room
+        // ---------------
         roomShader.use();
         roomShader.setMat4("projection", projection);
         roomShader.setMat4("view", view);
         ourRoom.Draw(roomShader);
+
+        // render the light cube
+        // ---------------------
+        // lightCubeShader.use();
+        // lightCubeShader.setMat4("projection", projection);
+        // lightCubeShader.setMat4("view", view);
+        // ourModel.DrawLightCubes(lightCubeShader);
 
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)

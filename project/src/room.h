@@ -1,3 +1,14 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The 'Room' header file defines a class for handling the room in OpenGL.
+It includes functions to setup and draw the room.
+This file is part of the project in the ECE6122 class.
+*/
+
 #ifndef ROOM_H
 #define ROOM_H
 
@@ -8,8 +19,15 @@
 
 class Room {
 public:
+    glm::vec3 minCorner; // Minimum corner of the room
+    glm::vec3 maxCorner; // Maximum corner of the room
+    float roomSize;
     // Constructor
     Room(const std::string& floortexturePath, const std::string& ceilingtexturePath, const std::string& walltexturePath) {
+        roomSize = 50.0f; 
+        minCorner = glm::vec3(-roomSize, 0.0f, -roomSize);
+        maxCorner = glm::vec3(roomSize, roomSize, roomSize);
+        
         setupFloor();
         //setupCeiling();
         setupWall();
@@ -32,8 +50,8 @@ private:
     unsigned int wallVBO, wallVAO, wallTexture;
 
     void setupFloor() {
-        float floorSize     = 50.0f; 
-        float tilingFactor  = 10.0f; 
+        float floorSize     = roomSize; 
+        float tilingFactor  = 4.0f; 
 
         float vertices[] = {
             // Positions         // Texture Coords (tiled)
@@ -65,17 +83,17 @@ private:
     }
 
     void setupCeiling(){
-        float ceilingSize = 50.0f;
+        float ceilingSize = roomSize;
         float tilingFactor = 10.0f;
-        float ceilingHeight = 20.0f; // Height of the ceiling from the floor
+        float ceilingHeight = roomSize;
 
         float vertices[] = {
-            // Positions                // Texture Coords
-            ceilingSize, ceilingHeight, ceilingSize,  tilingFactor, 0.0f,
-           -ceilingSize, ceilingHeight, ceilingSize,  0.0f,         0.0f,
+            // Positions                 // Texture Coords
+            ceilingSize, ceilingHeight,  ceilingSize,  tilingFactor, 0.0f,
+           -ceilingSize, ceilingHeight,  ceilingSize,  0.0f,         0.0f,
            -ceilingSize, ceilingHeight, -ceilingSize,  0.0f,        tilingFactor,
 
-            ceilingSize, ceilingHeight, ceilingSize,  tilingFactor,  0.0f,
+            ceilingSize, ceilingHeight,  ceilingSize,  tilingFactor,  0.0f,
            -ceilingSize, ceilingHeight, -ceilingSize,  0.0f,         tilingFactor,
             ceilingSize, ceilingHeight, -ceilingSize,  tilingFactor, tilingFactor
         };
@@ -97,9 +115,9 @@ private:
     }
 
     void setupWall(){
-        float wallWidth = 50.0f;
-        float wallHeight = 50.0f; // Same as ceiling height
-        float tilingFactor = 1.0f; // Adjust as needed
+        float wallWidth = roomSize;
+        float wallHeight = roomSize;
+        float tilingFactor = 1.0f;
 
         float vertices[] = {
             // One wall positioned at one end of the floor

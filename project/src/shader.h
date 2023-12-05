@@ -1,3 +1,11 @@
+/*
+Author: Yang Gu
+Date last modified: 05/12/2023
+Organization: ECE6122 Class
+
+Description:
+The shader is source from https://github.com/JoeyDeVries/LearnOpenGL/blob/master/includes/learnopengl/shader_m.h
+*/
 #ifndef SHADER_H
 #define SHADER_H
 
